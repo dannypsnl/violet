@@ -84,7 +84,7 @@ mutual
     match VTSemicolon
     u <- tm
     pure $ RLet name a t u
-  
+
   -- elim n
   -- | C x => x
   -- | z => z
@@ -148,13 +148,20 @@ export
 ruleTm : Rule Raw
 ruleTm = tm
 
+ruleModuleImport : Rule ModuleImportStmt
+ruleModuleImport = do
+  match VTImport
+  name <- match VTIdentifier
+  pure $ MkModuleImportStat name
+
 export
 ruleModule : Rule ModuleRaw
 ruleModule = do
   match VTModule
   name <- match VTIdentifier
+  imports <- many ruleModuleImport
   bindings <- many ttm
-  pure $ MkModuleRaw (MkModuleInfoRaw name) bindings
+  pure $ MkModuleRaw (MkModuleInfoRaw name imports) bindings
 
 export
 parseViolet : Rule a -> String -> Either PError a

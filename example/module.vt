@@ -1,5 +1,8 @@
 module AModule
 
+import Lib
+import Base
+
 data Nat
   | zero : Nat
   | suc : Nat → Nat;
