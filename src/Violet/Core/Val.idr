@@ -10,31 +10,53 @@ mutual
 	data Val
 		= VVar Name
 		| VApp Val Val
-		| VLam Name (Val -> Either EvalError Val)
+		| VLam Name (LocalEnv -> Val -> Either EvalError Val)
 		| VPi Name VTy (Val -> Either EvalError Val)
 		| VU
+		-- constructor
+		| VCtor Name
 
 	public export
 	VTy : Type
 	VTy = Val
 
+	public export
+	LocalEnv : Type
+	LocalEnv = List (Name, Val)
+
 public export
-Env : Type
-Env = List (Name, Val)
+GlobalEnv : Type
+GlobalEnv = List (Name, Val)
+
+public export
+record Env where
+	constructor MkEnv
+	global : GlobalEnv
+	local : LocalEnv
 
 export
 emptyEnv : Env
-emptyEnv = []
+emptyEnv = MkEnv [] []
 
 export
 extendEnv : Env -> Name -> Val -> Env
-extendEnv env x v = (x, v) :: env
+extendEnv env x v = { local := (x, v) :: env.local } env
+
+export
+lookupEnv : Name -> Env -> Either EvalError Val
+lookupEnv x env = do
+	Just v <- pure $ lookup x env.local
+		| Nothing => do
+			Just v <- pure $ lookup x env.global
+				| Nothing => Left $ NoVar x
+			pure v
+	pure v
 
 export
 fresh : Env -> Name -> Name
 fresh _ "_" = "_"
-fresh env x = case lookup x env of
-	Just _ => fresh env (x ++ "'")
+fresh env x = case lookupEnv x env of
+	Right _ => fresh env (x ++ "'")
 	_ => x
 
 export
@@ -45,45 +67,48 @@ quote env v = case v of
 	VLam x t => do
 		let x = fresh env x
 		let vx = (VVar x)
-		pure $ Lam x !(quote (extendEnv env x vx) !(t vx))
+		pure $ Lam x !(quote (extendEnv env x vx) !(t env.global vx))
 	VPi x a b => do
 		let x = fresh env x
 		pure $ Pi x !(quote env a) !(quote (extendEnv env x (VVar x)) !(b (VVar x)))
 	VU => pure U
+	VCtor x => pure $ Var x
 
 export
 toSpine : Env -> Val -> Either EvalError $ List Val
+toSpine env (VCtor x) = pure [VCtor x]
 toSpine env (VVar x) = pure [VVar x]
 toSpine env (VApp t u) = pure (!(toSpine env t) ++ !(toSpine env u))
 toSpine env v = Left $ BadSpine !(quote env v)
+
+app : GlobalEnv -> Val -> Val -> Either EvalError Val
+app env t' u with (t')
+	_ | (VLam _ t) = t env u
+	_ | t = pure $ VApp t u
 
 export
 eval : Env -> Tm -> Either EvalError Val
 eval env tm = case tm of
 	SrcPos tm => eval env tm.val
-	Var x => case lookup x env of
-		Just a => pure a
-		_ => Left $ NoVar x
-	Apply t u => case (!(eval env t), !(eval env u)) of
-		(VLam _ t, u) => t u
-		(t, u) => pure $ VApp t u
+	Var x => lookupEnv x env
+	Apply t u => app env.global !(eval env t) !(eval env u)
 	U => pure VU
-	Lam x t => pure $ VLam x (\u => eval (extendEnv env x u) t)
+	Lam x t => pure $ VLam x (\global, u => eval (extendEnv (MkEnv global env.local) x u) t)
 	Pi x a b => pure $ VPi x !(eval env a) (\u => eval (extendEnv env x u) b)
 	Let x a t u => eval (extendEnv env x !(eval env t)) u
-	Elim t cases => do
-		spine <- toSpine env !(eval env t)
-		go spine cases
+	Elim t cases => go !(eval env t) cases
 		where
-			matches : Pat -> List Val -> (Bool, Env)
-			matches (PVar x) [VVar x'] = (x == x', emptyEnv)
-			matches (PCons head rest) (VVar head' :: rest') = (head == head', zip rest rest')
-			matches _ _ = (False, emptyEnv)
+			matches : Pat -> Val -> (Bool, LocalEnv)
+			matches (PVar x) (VCtor x') = (x == x', [])
+			-- TODO: how to recognize the size of constructor to have proper spine extraction?
+			matches (PCons head [name]) (VApp (VCtor head') val) =
+				(head == head', (name, val) :: [])
+			matches _ _ = (False, [])
 
-			go : List Val -> List (Pat, Tm) -> Either EvalError Val
-			go spine ((pat, rhs) :: rest) = case matches pat spine of
-				(True, env') => eval (env' ++ env) rhs
-				(False, _) => go spine rest
+			go : Val -> List (Pat, Tm) -> Either EvalError Val
+			go spine ((pat, rhs) :: nextPat) = case matches pat spine of
+				(True, lenv) => eval ({ local := lenv ++ env.local } env) rhs
+				(False, _) => go spine nextPat
 			go spine [] = Left OutOfCase
 
 export

@@ -15,4 +15,4 @@ export
 prettyEvalError : EvalError -> Doc AnsiStyle
 prettyEvalError (NoVar name) = annBold $ annColor Red $ hsep ["variable:", pretty name, "not found"]
 prettyEvalError (BadSpine tm) = annBold $ annColor Red $ hsep ["bad spine on:", pretty tm]
-prettyEvalError (OutOfCase) = annBold $ annColor Red $ "pattern matching out of case"
+prettyEvalError OutOfCase = annBold $ annColor Red $ "pattern matching out of case"

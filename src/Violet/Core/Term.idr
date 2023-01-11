@@ -76,4 +76,4 @@ Pretty Tm where
 		<++> vsep (map prettyCase cases)
 		where
 			prettyCase : (Pat, Tm) -> Doc ann
-			prettyCase (p, t) = pipe <++> pretty p <++> "=>" <++> pretty tm
+			prettyCase (p, t) = pipe <++> pretty p <++> "=>" <++> pretty t

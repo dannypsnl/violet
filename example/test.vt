@@ -16,11 +16,10 @@ def zero? (n : Nat) : Bool => elim n
 
 def plus (n m : Nat) : Nat => elim n
 | zero  => m
-| suc n => suc $ plus n m
+| suc n1 => suc $ plus n1 m
 
 def not (b : Bool) : Bool => elim b
 | True => False
 | False => True
 
-def main : Bool => not $ not $ zero? $
-	id Nat $ id Nat (suc zero)
+def main : Nat => plus (suc $ suc zero) zero
